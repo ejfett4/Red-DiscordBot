@@ -65,6 +65,36 @@ class Achievement(object):
         return (self._current, None)
 
     @property
+    def current_name(self):
+        """
+        Returns the current level being achieved (meaning haven't achieved yet) as a tuple:
+        ::
+            (current_level, (required_level, name, icon, description))
+        If all achievements have been achieved, the current level is returned with a None:
+        ::
+            (current_level, None)
+        """
+        g = [_ for _ in self.goals if self._current < _['level']]
+        if g:
+            return (self._current, g[0])
+        return (self._current['name'], None)
+
+    @property
+    def current_description(self):
+        """
+        Returns the current level being achieved (meaning haven't achieved yet) as a tuple:
+        ::
+            (current_level, (required_level, name, icon, description))
+        If all achievements have been achieved, the current level is returned with a None:
+        ::
+            (current_level, None)
+        """
+        g = [_ for _ in self.goals if self._current < _['level']]
+        if g:
+            return (self._current, g[0])
+        return (self._current['description'], None)
+
+    @property
     def achieved(self):
         """
         Returns a list of achieved goals
@@ -273,12 +303,15 @@ class AchievementBackend(object):
         ``tracked_id`` does not exist yet, it should be created. Also, if the given ``tracked_id``
         hasn't tracked the given ``Achievement`` yet, a new instance of the ``Achievement`` should
         be created for the given ``tracked_id``"""
-        if user.id not in self.accounts:
-            self.accounts[user.id] = {}
-        if achievement.__name__ not in self.accounts[user.id]:
-            self.accounts[user.id][achievement.__name__] = achievement()
+        server = user.server
+        if server.id not in self.accounts:
+            self.accounts[server.id] = {}
+        if user.id not in self.accounts[server.id]:
+            self.accounts[server.id][user.id] = {}
+        if achievement.__name__ not in self.accounts[server.id][user.id]:
+            self.accounts[server.id][user.id][achievement.__name__] = achievement()
         self._save_loyalty();
-        return self.accounts[user.id][achievement.__name__]
+        return self.accounts[server.id][user.id][achievement.__name__]
 
     def achievements_for_id(self, user, achievements):
         """
@@ -292,119 +325,31 @@ class AchievementBackend(object):
 
     def set_level_for_id(self, user, achievement, level):
         """ Set the ``level`` for an ``Achievement`` for the given ``tracked_id`` """
-        if user.id not in self.accounts:
-            self.accounts[user.id] = {}
-        if achievement.__name__ not in self.accounts[user.id]:
-            self.accounts[user.id][achievement.__name__] = achievement(current=level)
-        self.accounts[user.id][achievement.__name__].set_level(level)
+        server = user.server
+        if server.id not in self.accounts:
+            self.accounts[server.id] = {}
+        if user.id not in self.accounts[server.id]:
+            self.accounts[server.id][user.id] = {}
+        if achievement.__name__ not in self.accounts[server.id][user.id]:
+            self.accounts[server.id][user.id][achievement.__name__] = achievement(current=level)
+        self.accounts[server.id][user.id][achievement.__name__].set_level(level)
         self._save_loyalty();
 
     def get_tracked_ids(self):
-        return self.accounts.keys()
+        return self.accounts[server.id].keys()
 
     def remove_id(self, user):
         """ Removes *tracked_id* from the backend """
-        if user.id in self.accounts:
-            del self.accounts[user.id]
+        if user.id in self.accounts[user.server.id]:
+            del self.accounts[server.id][user.id]
         self._save_loyalty();
 
-    def create_account(self, user):
-        server = user.server
-        if not self.account_exists(user):
-            if server.id not in self.accounts:
-                self.accounts[server.id] = {}
-            balance = 0
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            account = {"name" : user.name, "balance" : balance,
-            "created_at" : timestamp}
-            self.accounts[server.id][user.id] = account
-            self._save_loyalty()
-            return self.get_account(user)
-        else:
-            raise AccountAlreadyExists
-
-    def account_exists(self, user):
-        try:
-            self._get_account(user)
-        except NoAccount:
-            return False
-        return True
-
-    def add_loyalty(self, user, amount):
-        server = user.server
-        if amount < 0:
-            raise NegativeValue
-        account = self._get_account(user)
-        account["balance"] += amount
-        self.accounts[server.id][user.id] = account
-        self._save_loyalty()
-
-    def set_loyalty(self, user, amount):
-        server = user.server
-        if amount < 0:
-            raise NegativeValue
-        account = self._get_account(user)
-        account["balance"] = amount
-        self.accounts[server.id][user.id] = account
-        self._save_loyalty()
-
-    def wipe_loyalty(self, server):
+    def wipe_achievements(self, server):
         self.accounts[server.id] = {}
         self._save_loyalty()
 
-    def get_server_accounts(self, server):
-        if server.id in self.accounts:
-            raw_server_accounts = deepcopy(self.accounts[server.id])
-            accounts = []
-            for k, v in raw_server_accounts.items():
-                v["id"] = k
-                v["server"] = server
-                acc = self._create_account_obj(v)
-                accounts.append(acc)
-            return accounts
-        else:
-            return []
-
-    def get_all_accounts(self, server):
-        accounts = []
-        for server_id, v in self.accounts.items():
-            if server is None:# Servers that have since been left will be ignored
-                continue      # Same for users_id from the old bank format
-            raw_server_accounts = deepcopy(self.accounts[server.id])
-            for k, v in raw_server_accounts.items():
-                v["id"] = k
-                v["server"] = server
-                acc = self._create_account_obj(v)
-                accounts.append(acc)
-        return accounts
-
-    def get_balance(self, user):
-        account = self._get_account(user)
-        return account["balance"]
-
-    def get_account(self, user):
-        acc = self._get_account(user)
-        acc["id"] = user.id
-        acc["server"] = user.server
-        return self._create_account_obj(acc)
-
-    def _create_account_obj(self, account):
-        account["member"] = account["server"].get_member(account["id"])
-        account["created_at"] = datetime.strptime(account["created_at"],
-                                                  "%Y-%m-%d %H:%M:%S")
-        Account = namedtuple("Account", "id name balance "
-                             "created_at server member")
-        return Account(**account)
-
     def _save_loyalty(self):
         dataIO.save_json("data/loyalty/loyalty.json", self.accounts)
-
-    def _get_account(self, user):
-        server = user.server
-        try:
-            return deepcopy(self.accounts[server.id][user.id])
-        except KeyError:
-            raise NoAccount
 
 class AlreadyRegistered(Exception):
         pass
@@ -562,6 +507,20 @@ class AchievementTracker(object):
         achievement = self.achievement_for_id(user, achievement)
         return achievement.current
 
+    def current_name(self, user, achievement):
+        """
+        Returns ``current`` for a given tracked_id. See :ref:``Achievement``
+        """
+        achievement = self.achievement_for_id(user, achievement)
+        return achievement.current_name
+
+    def current_description(self, user, achievement):
+        """
+        Returns ``current`` for a given tracked_id. See :ref:``Achievement``
+        """
+        achievement = self.achievement_for_id(user, achievement)
+        return achievement.current_description
+
     def achieved(self, user, achievement):
         """
         Returns ``achieved`` for a given tracked_id. See :ref:``Achievement``
@@ -643,7 +602,9 @@ class Loyalty:
     async def getloyalty(self, ctx):
         user = ctx.message.author
         points = tracker.current(user, DiscordAchievement)
-        await self.bot.say("{0} You have {1} points!".format(user.mention, points))
+        level = tracker.current_name(user, DiscordAchievement)
+        desc = tracker.current_description(user, DiscordAchievement)
+        await self.bot.say("{0} You have {1} points!\n You are: {2}-{3}".format(user.mention, points, level, desc))
 
 
 def check_folders():
