@@ -5,7 +5,6 @@ from collections import namedtuple, defaultdict
 from datetime import datetime
 from random import randint
 from copy import deepcopy
-from .view import StringView
 from .utils import checks
 from __main__ import send_cmd_help
 import os
@@ -14,25 +13,16 @@ import logging
 import itertools
 
 class Store:
-    def __init__(self, bot, file_path):
-        self.costs = dataIO.load_json(file_path)
-        self.settings = fileIO("data/store/settings.json", "load")
+    def __init__(self, bot):
         self.bot = bot
-        def category(tup):
-            cog = tup[1].cog_name
-            # we insert the zero width space there to give it approximate
-            # last place sorting position.
-            return cog + ':' if cog is not None else '\u200bNo Category:'
-
-        data = sorted(self.bot.formatter.filter_command_list(), key=category)
-        for category, commands in itertools.groupby(data, key=category):
-            for command in commands:
-                if command[0] not in self.costs:
-                    self.costs[command[0]] = 0
-        self._save_store()
+        self.costs = dataIO.load_json('data/store/costs.json')
+        self.settings = fileIO("data/store/settings.json", "load")
 
     def _save_store(self):
         dataIO.save_json("data/store/costs.json", self.costs)
+
+    def getcosts(self):
+        return self.costs
 
     @commands.group(name="store", pass_context=True)
     async def _store(self, ctx):
@@ -45,46 +35,47 @@ class Store:
     async def setcost(self, ctx, cmd : str, sum : int):
         author = ctx.message.author
         server = author.server
-        if cmd in self.costs:
-            if sum > -1:
-                self.costs[cmd] = sum
-                self._save_store()
+        if sum > -1:
+            self.costs[cmd] = sum
+            self._save_store()
+            await self.bot.say("{0} now costs {1}".format(cmd, self.costs[cmd]))
         else:
-            await self.bot.say("{0} is not a command in the store!".format(cmd))
+            await self.bot.say("{0} can't be negative".format(sum))
 
     @_store.command()
-    async def getcost(self, ctx, cmd : str):
+    async def getcost(self, cmd : str):
         if cmd in self.costs:
             await self.bot.say("{0} costs {1}".format(cmd, self.costs[cmd]))
         else:
             await self.bot.say("{0} is not a command in the store!".format(cmd))
 
-@bot.check
 def has_moneys(ctx):
-    economy = ctx.bot.get_cog("economy")
+    economy = ctx.bot.get_cog("Economy")
+    store = ctx.bot.get_cog("Store")
     bank = economy.bank
     message = ctx.message
     author = message.author
     prefix = ctx.bot.command_prefix
     cmd_and_prefix = message.content.strip().split(' ')[0]
-    cmd = cmd_and_prefix.replace(prefix, "")
-    if bank.account_exists(author):
-        if cmd in self.costs:
-            cost = self.costs[cmd]
-            return bank.can_spend(author, cost)
-        else:
-            return False
+    cmd = cmd_and_prefix.replace(prefix[0], "")
+    if store is not None:
+        if bank.account_exists(author):
+            if cmd in store.getcosts():
+                cost = store.getcosts()[cmd]
+                return bank.can_spend(author, cost)
     else:
-        return False
+        return True
 
-@bot.listen
 async def on_command(command, ctx):
-    economy = ctx.bot.get_cog("economy")
+    economy = ctx.bot.get_cog("Economy")
+    store = ctx.bot.get_cog("Store")
     author = ctx.message.author
     server = author.server
     cmd = command.name
-    if cmd in self.costs:
-        economy.bank.withdraw_credits(author, cmd)
+    if store is not None:
+        if cmd in store.getcosts():
+            economy.bank.withdraw_credits(author, store.getcosts()[cmd])
+    pass
 
 def check_folders():
     if not os.path.exists("data/store"):
@@ -92,7 +83,6 @@ def check_folders():
         os.makedirs("data/store")
 
 def check_files():
-
     f = "data/store/settings.json"
     if not fileIO(f, "check"):
         print("Creating default store's settings.json...")
@@ -113,4 +103,6 @@ def setup(bot):
         handler = logging.FileHandler(filename='data/store/store.log', encoding='utf-8', mode='a')
         handler.setFormatter(logging.Formatter('%(asctime)s %(message)s', datefmt="[%d/%m/%Y %H:%M]"))
         logger.addHandler(handler)
-    bot.add_cog(Store(bot, "data/store/costs.json"))
+    #bot.add_check(has_moneys)
+    bot.add_listener(on_command)
+    bot.add_cog(Store(bot))

@@ -1,3 +1,19 @@
+import discord
+from discord.ext import commands
+from cogs.utils.dataIO import dataIO, fileIO
+from collections import namedtuple, defaultdict
+from datetime import datetime
+from random import randint
+from copy import deepcopy
+from .utils import checks
+from __main__ import send_cmd_help
+import os
+import time
+import logging
+import sys
+import threading
+from inspect import isclass as _isclass
+
 class Achievement(object):
     """
     Base Achievement class.
@@ -76,8 +92,8 @@ class Achievement(object):
         """
         g = [_ for _ in self.goals if self._current < _['level']]
         if g:
-            return (self._current, g[0])
-        return (self._current['name'], None)
+            return g[0]['name']
+        return g[0]['name']
 
     @property
     def current_description(self):
@@ -91,8 +107,8 @@ class Achievement(object):
         """
         g = [_ for _ in self.goals if self._current < _['level']]
         if g:
-            return (self._current, g[0])
-        return (self._current['description'], None)
+            return g[0]['description']
+        return g[0]['description']
 
     @property
     def achieved(self):
@@ -128,10 +144,6 @@ class Achievement(object):
         Overrides the current level with the given level
         """
         self._current = level
-
-import sys
-import threading
-from inspect import isclass as _isclass
 
 def _make_id(target):
     if hasattr(target, '__func__'):
@@ -295,8 +307,8 @@ level_increased = Signal()
 highest_level_achieved = Signal()
 
 class AchievementBackend(object):
-    def __init__(self, file_path):
-        self.accounts = dataIO.load_json(file_path)
+    def __init__(self):
+        self.accounts = {}
 
     def achievement_for_id(self, user, achievement):
         """ Retrieves the current ``Achievement`` for the given ``tracked_id``. If the given
@@ -348,8 +360,26 @@ class AchievementBackend(object):
         self.accounts[server.id] = {}
         self._save_loyalty()
 
+    def _load_loyalty(self, file_path, achievement):
+        self.accounts = dataIO.load_json(file_path)
+        for key_server, value_server in self.accounts.items():
+            self.accounts[key_server] = {}
+            for key_user, value_user in value_server.items():
+                self.accounts[key_server][key_user] = {}
+                for key_achievement, value_achievement in value_user.items():
+                    temp = self.accounts[key_server][key_user][key_achievement]
+                    self.accounts[key_server][key_user][key_achievement] = achievement()
+                    self.accounts[key_server][key_user][key_achievement]._current = temp
+
     def _save_loyalty(self):
-        dataIO.save_json("data/loyalty/loyalty.json", self.accounts)
+        to_save = {}
+        for key_server, value_server in self.accounts.items():
+            to_save[key_server] = {}
+            for key_user, value_user in value_server.items():
+                to_save[key_server][key_user] = {}
+                for key_achievement, value_achievement in value_user.items():
+                    to_save[key_server][key_user][key_achievement] = value_achievement.current
+        dataIO.save_json("data/loyalty/loyalty.json", to_save)
 
 class AlreadyRegistered(Exception):
         pass
@@ -373,9 +403,9 @@ class AchievementTracker(object):
         The backend the tracker is using can be updated at any time using the :py:func:`set_backend`
         function.
     """
-    def __init__(self, file_path):
+    def __init__(self):
         self._registry = []
-        self.backend = AchievementBackend(file_path)
+        self.backend = AchievementBackend()
 
     def register(self, achievement_or_iterable, **options):
         """
@@ -443,13 +473,13 @@ class AchievementTracker(object):
 
         a = [_ for _ in self._registry if _.__name__ == achievement]
         if a:
-            return self._backend.achievement_for_id(user, a[0])
+            return self.backend.achievement_for_id(user, a[0])
         raise NotRegistered('The achievement %s is not registered with this tracker' % achievement)
 
     def achievements_for_id(self, user, category=None, keywords=[]):
         """ Returns all of the achievements for tracked_id that match the given category and
         keywords """
-        return self._backend.achievements_for_id(user, self.achievements(category, keywords))
+        return self.backend.achievements_for_id(user, self.achievements(category, keywords))
 
     def _check_signals(self, tracked_id, achievement, old_level, old_achieved):
         cur_level = achievement.current[0]
@@ -479,7 +509,7 @@ class AchievementTracker(object):
         cur_level = achievement.current[0]
         achieved = achievement.achieved[:]
         achievement.increment(amount, *args, **kwargs)
-        self._backend.set_level_for_id(user, achievement.__class__, achievement.current[0])
+        self.backend.set_level_for_id(user, achievement.__class__, achievement.current[0])
         return self._check_signals(user.id, achievement, cur_level, achieved)
 
     def evaluate(self, user, achievement, *args, **kwargs):
@@ -496,7 +526,7 @@ class AchievementTracker(object):
         cur_level = achievement.current[0]
         achieved = achievement.achieved[:]
         result = achievement.evaluate(*args, **kwargs)
-        self._backend.set_level_for_id(user, achievement.__class__, achievement.current[0])
+        self.backend.set_level_for_id(user, achievement.__class__, achievement.current[0])
         self._check_signals(user.id, achievement, cur_level, achieved)
         return result
 
@@ -543,16 +573,16 @@ class AchievementTracker(object):
         cur_level = achievement.current[0]
         achieved = achievement.achieved[:]
         achievement.set_level(level)
-        self._backend.set_level_for_id(user, achievement.__class__, achievement.current[0])
+        self.backend.set_level_for_id(user, achievement.__class__, achievement.current[0])
         self._check_signals(user.id, achievement, cur_level, achieved)
 
     def get_tracked_ids(self):
         """ Returns all tracked ids """
-        return self._backend.get_tracked_ids()
+        return self.backend.get_tracked_ids()
 
     def remove_id(self, user):
         """ Remove all tracked information for tracked_id """
-        self._backend.remove_id(user)
+        self.backend.remove_id(user)
 
 class DiscordAchievement(Achievement):
     """
@@ -577,7 +607,7 @@ class DiscordAchievement(Achievement):
 
 class Loyalty:
     def __init__(self, bot, file_path):
-        self.tracker = AchievementTracker(file_path)
+        self.tracker = AchievementTracker()
         self.tracker.register(DiscordAchievement)
         self.bot = bot
 
@@ -592,18 +622,19 @@ class Loyalty:
         user = ctx.message.author
         good_points = points
         bad_points = 0
-        bank = ctx.bot.get_cog("economy").bank
+        bank = ctx.bot.get_cog("Economy").bank
         if bank.can_spend(user, points):
-            tracker.evaluate(user, DiscordAchievement, good_points, bad_points)
+            self.tracker.evaluate(user, DiscordAchievement, good_points, bad_points)
+            bank.withdraw_credits(user, points)
         else:
             await self.bot.say("You don't have that many points!")
 
     @_loyalty.command(pass_context=True)
     async def getloyalty(self, ctx):
         user = ctx.message.author
-        points = tracker.current(user, DiscordAchievement)
-        level = tracker.current_name(user, DiscordAchievement)
-        desc = tracker.current_description(user, DiscordAchievement)
+        points = self.tracker.current(user, DiscordAchievement)[0]
+        level = self.tracker.current_name(user, DiscordAchievement)
+        desc = self.tracker.current_description(user, DiscordAchievement)
         await self.bot.say("{0} You have {1} points!\n You are: {2}-{3}".format(user.mention, points, level, desc))
 
 
