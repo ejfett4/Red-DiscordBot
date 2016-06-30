@@ -93,7 +93,7 @@ class Achievement(object):
         g = [_ for _ in self.goals if self._current < _['level']]
         if g:
             return g[0]['name']
-        return g[0]['name']
+        return None
 
     @property
     def current_description(self):
@@ -108,7 +108,7 @@ class Achievement(object):
         g = [_ for _ in self.goals if self._current < _['level']]
         if g:
             return g[0]['description']
-        return g[0]['description']
+        return None
 
     @property
     def achieved(self):
@@ -123,6 +123,18 @@ class Achievement(object):
         Returns a list of goals that have not been met yet
         """
         return [_ for _ in self.goals if self._current < _['level']]
+
+    def add_goal(self, level, name, description):
+        result = list(self.goals)
+        result.append({'level': level, 'name': name, 'description': description})
+        self.goals = sorted(tuple(result), key=lambda g: g['level'])  # make sure our goals are sorted
+        #TODO maybe good?
+
+    def remove_goal(self, name, level):
+        result = list(self.goals)
+        result = [_ for _ in result if !(_.get('name') == name or _.get('level') == level)]
+        self.goals = sorted(tuple(result), key=lambda g: g['level'])  # make sure our goals are sorted
+        #TODO maybe good?
 
     def increment(self, amount=1, *args, **kwargs):
         """
@@ -590,7 +602,6 @@ class DiscordAchievement(Achievement):
     """
     name = 'Chat Loyalty'
     category = 'chat'
-    keywords = ('cli', 'commands', 'create', 'modifiers')
     goals = (
         {'level': 1, 'name': 'My First Creation', 'description': 'and it\'s so beautiful....'},
         {'level': 100, 'name': 'Green thumb', 'description': 'You\'ve created at least 5 objects!'},
@@ -618,7 +629,8 @@ class Loyalty:
             await send_cmd_help(ctx)
 
     @_loyalty.command(pass_context=True, no_pm=True)
-    async def be_loyal(self, ctx, points : int):
+    async def buylevel(self, ctx, points : int):
+        """Buy loyalty with economy points!"""
         user = ctx.message.author
         good_points = points
         bad_points = 0
@@ -630,13 +642,24 @@ class Loyalty:
             await self.bot.say("You don't have that many points!")
 
     @_loyalty.command(pass_context=True)
-    async def getloyalty(self, ctx):
+    async def getlevel(self, ctx):
+        """Get current loyalty level and associated rank"""
         user = ctx.message.author
-        points = self.tracker.current(user, DiscordAchievement)[0]
-        level = self.tracker.current_name(user, DiscordAchievement)
-        desc = self.tracker.current_description(user, DiscordAchievement)
-        await self.bot.say("{0} You have {1} points!\n You are: {2}-{3}".format(user.mention, points, level, desc))
+        goal = self.tracker.achieved(user, DiscordAchievement)[-1]
+        points = goal['points']
+        level = goal['level']
+        desc = goal['description']
+        await self.bot.say("{0} You have {1} points!\n You are: {2} -{3}".format(user.mention, points, level, desc))
 
+    @_loyalty.command()
+    @checks.admin_or_permissions(manage_server=True)
+    async def punish(self, user : discord.Member):
+        """Admin command, punish user by reducing loyalty rank"""
+        goal = self.tracker.achieved(user, DiscordAchievement)[-2]#TODO make this check if they are at first level
+        level = goal['level']
+        desc = goal['description']
+        self.tracker.setLevel(user, DiscordAchievement, goal['level'])
+        await self.bot.say("{0} You have been punished!\n You are now: {2} -{3}".format(user.mention, level, desc))
 
 def check_folders():
     if not os.path.exists("data/loyalty"):
@@ -658,10 +681,4 @@ def setup(bot):
     global logger
     check_folders()
     check_files()
-    logger = logging.getLogger("red.loyalty")
-    if logger.level == 0: # Prevents the logger from being loaded again in case of module reload
-        logger.setLevel(logging.INFO)
-        handler = logging.FileHandler(filename='data/loyalty/loyalty.log', encoding='utf-8', mode='a')
-        handler.setFormatter(logging.Formatter('%(asctime)s %(message)s', datefmt="[%d/%m/%Y %H:%M]"))
-        logger.addHandler(handler)
     bot.add_cog(Loyalty(bot, "data/loyalty/loyalty.json"))

@@ -13,10 +13,17 @@ import logging
 import itertools
 
 class Store:
+    """Store
+
+    Allows any commands to cost economy.py points
+    All commands default to 0 points
+    For now it doesn't know about actual available commands, doesn't look at aliases,
+        and can register any command including important ones and nonexistant ones
+    ^That means you can make the bot do bad things if you aren't careful, be wary
+    """
     def __init__(self, bot):
         self.bot = bot
         self.costs = dataIO.load_json('data/store/costs.json')
-        self.settings = fileIO("data/store/settings.json", "load")
 
     def _save_store(self):
         dataIO.save_json("data/store/costs.json", self.costs)
@@ -33,8 +40,7 @@ class Store:
     @_store.command(pass_context=True)
     @checks.admin_or_permissions(manage_server=True)
     async def setcost(self, ctx, cmd : str, sum : int):
-        author = ctx.message.author
-        server = author.server
+        """Set the cost of a command: [prefix]store setcost [command] [cost]"""
         if sum > -1:
             self.costs[cmd] = sum
             self._save_store()
@@ -44,6 +50,7 @@ class Store:
 
     @_store.command()
     async def getcost(self, cmd : str):
+        """Get the cost of a command: [prefix]store getcost [command]"""
         if cmd in self.costs:
             await self.bot.say("{0} costs {1}".format(cmd, self.costs[cmd]))
         else:
@@ -53,16 +60,22 @@ def has_moneys(ctx):
     economy = ctx.bot.get_cog("Economy")
     store = ctx.bot.get_cog("Store")
     bank = economy.bank
-    message = ctx.message
     author = message.author
-    prefix = ctx.bot.command_prefix
-    cmd_and_prefix = message.content.strip().split(' ')[0]
-    cmd = cmd_and_prefix.replace(prefix[0], "")
+    cmd = ctx.command.name
     if store is not None:
-        if bank.account_exists(author):
-            if cmd in store.getcosts():
+        if cmd in store.getcosts():
+            if bank.account_exists(author):
                 cost = store.getcosts()[cmd]
-                return bank.can_spend(author, cost)
+                if bank.can_spend(author, cost):
+                    return True
+                else:
+                    await self.bot.say("{0} You have {1} points, but that costs {2}".format(author.mention, bank.get_balance(author), cost))
+                    return False
+            else:
+                await self.bot.say("{0} You need a bank account to call that command\nYou can get one by typing: {1}bank register".format(author.mention, prefix))
+                return False
+        else:
+            return True
     else:
         return True
 
@@ -70,7 +83,6 @@ async def on_command(command, ctx):
     economy = ctx.bot.get_cog("Economy")
     store = ctx.bot.get_cog("Store")
     author = ctx.message.author
-    server = author.server
     cmd = command.name
     if store is not None:
         if cmd in store.getcosts():
@@ -83,11 +95,6 @@ def check_folders():
         os.makedirs("data/store")
 
 def check_files():
-    f = "data/store/settings.json"
-    if not fileIO(f, "check"):
-        print("Creating default store's settings.json...")
-        fileIO(f, "save", {})
-
     f = "data/store/costs.json"
     if not fileIO(f, "check"):
         print("Creating empty costs.json...")
@@ -97,12 +104,6 @@ def setup(bot):
     global logger
     check_folders()
     check_files()
-    logger = logging.getLogger("red.store")
-    if logger.level == 0: # Prevents the logger from being loaded again in case of module reload
-        logger.setLevel(logging.INFO)
-        handler = logging.FileHandler(filename='data/store/store.log', encoding='utf-8', mode='a')
-        handler.setFormatter(logging.Formatter('%(asctime)s %(message)s', datefmt="[%d/%m/%Y %H:%M]"))
-        logger.addHandler(handler)
-    #bot.add_check(has_moneys)
+    bot.add_check(has_moneys)
     bot.add_listener(on_command)
     bot.add_cog(Store(bot))
