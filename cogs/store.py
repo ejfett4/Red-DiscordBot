@@ -39,6 +39,20 @@ class Store:
 
     @_store.command(pass_context=True)
     @checks.admin_or_permissions(manage_server=True)
+    async def setcost(self, ctx, **kwargs):
+        """Set the cost of a command: [prefix]store setcost [command] [cost]"""
+        await self.bot.say("{0}".format(kwargs))
+        cmd = kwargs.get('cmd')
+        sum = kwargs.get('sum')
+        if sum > -1:
+            self.costs[cmd] = sum
+            self._save_store()
+            await self.bot.say("{0} now costs {1}".format(cmd, self.costs[cmd]))
+        else:
+            await self.bot.say("{0} can't be negative".format(sum))
+    """
+    @_store.command(pass_context=True, )
+    @checks.admin_or_permissions(manage_server=True)
     async def setcost(self, ctx, cmd : str, sum : int):
         """Set the cost of a command: [prefix]store setcost [command] [cost]"""
         if sum > -1:
@@ -47,6 +61,21 @@ class Store:
             await self.bot.say("{0} now costs {1}".format(cmd, self.costs[cmd]))
         else:
             await self.bot.say("{0} can't be negative".format(sum))
+    """
+
+    """
+    @_store.command(pass_context=True)
+    @checks.admin_or_permissions(manage_server=True)
+    async def setcost(self, ctx, cmd : str, sub_cmd: str, sum : int):
+        """Set the cost of a command: [prefix]store setcost [command] [cost]"""
+        full_cmd = cmd + " " + sub_cmd
+        if sum > -1:
+            self.costs[full_cmd] = sum
+            self._save_store()
+            await self.bot.say("{0}now costs {1}".format(full_cmd, self.costs[full_cmd]))
+        else:
+            await self.bot.say("{0} can't be negative".format(sum))
+    """
 
     @_store.command()
     async def getcost(self, cmd : str):
@@ -56,6 +85,17 @@ class Store:
         else:
             await self.bot.say("{0} is not a command in the store!".format(cmd))
 
+    """
+    @_store.command()
+    async def getcost(self, cmd : str, sub_cmd : str):
+        """Get the cost of a command: [prefix]store getcost [command]"""
+        full_cmd = cmd + " " + sub_cmd
+        if full_cmd in self.costs:
+            await self.bot.say("{0} costs {1}".format(full_cmd, self.costs[full_cmd]))
+        else:
+            await self.bot.say("{0} is not a command in the store!".format(full_cmd))
+    """
+
 def has_moneys(ctx):
     economy = ctx.bot.get_cog("Economy")
     store = ctx.bot.get_cog("Store")
@@ -63,10 +103,13 @@ def has_moneys(ctx):
     message = ctx.message
     author = message.author
     cmd = ctx.command.name
+    sub_cmd = ctx.command.invoked_subcommand
+    full_cmd = cmd
+    full_cmd = cmd + " " + sub_cmd if sub_cmd is not None
     if store is not None:
-        if cmd in store.getcosts():
+        if full_cmd in store.getcosts():
             if bank.account_exists(author):
-                cost = store.getcosts()[cmd]
+                cost = store.getcosts()[full_cmd]
                 if bank.can_spend(author, cost):
                     return True
                 else:
@@ -85,10 +128,13 @@ async def on_command(command, ctx):
     economy = ctx.bot.get_cog("Economy")
     store = ctx.bot.get_cog("Store")
     author = ctx.message.author
+    parent_cmd = command.parent
     cmd = command.name
+    full_cmd = cmd
+    full_cmd = parent_cmd + " " + cmd if parent_cmd is not None
     if store is not None:
-        if cmd in store.getcosts():
-            economy.bank.withdraw_credits(author, store.getcosts()[cmd])
+        if full_cmd in store.getcosts():
+            economy.bank.withdraw_credits(author, store.getcosts()[full_cmd])
     pass
 
 def check_folders():
