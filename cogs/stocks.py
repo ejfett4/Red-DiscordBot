@@ -7,6 +7,7 @@ from random import randint, random
 from copy import deepcopy
 from .utils import checks
 from __main__ import send_cmd_help
+import asyncio
 import os
 import time
 import logging
@@ -39,7 +40,7 @@ class Stocks:
             await send_cmd_help(ctx)
 
     @_stocks.command(pass_context=True, no_pm=True)
-    async def buy(self, ctx, stock_name, amount):
+    async def buy(self, ctx, stock_name, amount : int):
         """Buy *amount* shares of *stock_name* stock"""
         user = ctx.message.author
         economy = self.bot.get_cog("Economy")
@@ -52,8 +53,14 @@ class Stocks:
                     cost = self.stocks[stock_name]['price'] * amount
                     if bank.can_spend(user, cost):
                         bank.withdraw_credits(user, cost)
-                        self.portfolios[user.id][stock_name] += amount
+                        if stock_name in self.portfolios[user.id]:
+                            self.portfolios[user.id][stock_name] += amount
+                        else:
+                            self.portfolios[user.id][stock_name] = amount
+                        self.stocks[stock_name]['bought'] += amount
                         dataIO.save_json('data/stocks/portfolios.json', self.portfolios)
+                        dataIO.save_json('data/stocks/stocks.json', self.stocks)
+                        await self.bot.say("You bought {1} stocks of {0}".format(stock_name, amount))
                     else:
                         await self.bot.say("You don't have enough bank credits to purchase {0} of {1}".format(amount, stock_name))
                 else:
@@ -65,7 +72,7 @@ class Stocks:
 
 
     @_stocks.command(pass_context=True, no_pm=True)
-    async def sell(self, ctx, stock_name, amount):
+    async def sell(self, ctx, stock_name, amount : int):
         """Sell *amount* shares of *stock_name* stock"""
         user = ctx.message.author
         economy = self.bot.get_cog("Economy")
@@ -79,7 +86,10 @@ class Stocks:
                         price = self.stocks[stock_name]['price'] * amount
                         bank.deposit_credits(user, price)
                         self.portfolios[user.id][stock_name] -= amount
+                        self.stocks[stock_name]['sold'] += amount
                         dataIO.save_json('data/stocks/portfolios.json', self.portfolios)
+                        dataIO.save_json('data/stocks/stocks.json', self.stocks)
+                        await self.bot.say("You sold {1} stocks of {0}".format(stock_name, amount))
                     else:
                         await self.bot.say("You don't have enough {0} stocks to sell {1}".format(stock_name, amount))
                 else:
@@ -90,33 +100,59 @@ class Stocks:
             await self.bot.say("Couldn't find the Economy cog, please load it before trying to use Stocks")
 
     @_stocks.command()
+    async def listall(self):
+        """List stocks and prices"""
+        await self.bot.say(self.make_list())
+
+    @_stocks.command(pass_context=True)
+    async def portfolio(self, ctx):
+        """List stocks and quantities owned"""
+        result = "```"
+        for key, value in self.portfolios[ctx.message.author.id].items():
+            result += "{0} : {1} owned\n".format(key, value)
+        result += "```"
+        await self.bot.say(result)
+
+    @_stocks.command()
     @checks.admin_or_permissions(manage_server=True)
     async def update(self):
         """Force update stock prices"""
-        self.update_stock_prices()
+        await self.update_stock_prices()
+        sentence = self.make_list()
+        self.bot.say(sentence)
 
-    def update_stock_prices(self):
-        for key, value in stocks.items():
+    def make_list(self):
+        result = "```"
+        for key, value in self.stocks.items():
+            result += "{0}: {1} points\n".format(key, value['price'])
+        result += "```"
+        return result
+
+    async def update_stock_prices(self):
+        for key, value in self.stocks.items():
             self.stocks[key]['price'] = self.new_price(self.stocks[key])
+            self.stocks[key]['bought'] = 0
+            self.stocks[key]['sold'] = 0
         dataIO.save_json('data/stocks/stocks.json', self.stocks)
 
+
     def new_price(self, stock):
-        net = (stock['bought'] - stock['sold'])
+        bought = stock['bought']
         total = stock['bought'] + stock['sold']
         if total == 0:
-            total = net
-        purchase_factor = (net / total) + 0.5
-        random_factor = (random() + 0.5) / 2.0
-        result_price = int(price * random_factor * purchase_factor)
-        result_price = (random() * (result_price / 80)) > 0.95 ? 40 : result_price
+            total = 1
+        purchase_factor = (bought / total) / 2.0 + 1.0
+        random_factor = (random() / 2.0 + 0.75)
+        result_price = int(stock['price'] * random_factor * purchase_factor)
+        if result_price == 0:
+            result_price = 10
+        #result_price = ((random() * (result_price / 80)) > 0.95) ? 40 : result_price
         return result_price
 
     async def check_update_prices(self):
         while "Stocks" in self.bot.cogs:
-            if datetime.now().time().hour == 8:
-                self.update_stock_prices()
-            await asyncio.sleep(3600)
-
+            await asyncio.sleep(60)
+            await self.update_stock_prices()
 
 def check_folders():
     if not os.path.exists("data/stocks"):
@@ -124,7 +160,7 @@ def check_folders():
         os.makedirs("data/stocks")
 
 def check_files():
-    f = "'data/stocks/portfolios.json'"
+    f = "data/stocks/portfolios.json"
     if not fileIO(f, "check"):
         print("Creating empty portfolios.json...")
         fileIO(f, "save", {})

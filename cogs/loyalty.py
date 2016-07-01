@@ -132,7 +132,7 @@ class Achievement(object):
 
     def remove_goal(self, name, level):
         result = list(self.goals)
-        result = [_ for _ in result if !(_.get('name') == name or _.get('level') == level)]
+        result = [_ for _ in result if not (_.get('name') == name or _.get('level') == level)]
         self.goals = sorted(tuple(result), key=lambda g: g['level'])  # make sure our goals are sorted
         #TODO maybe good?
 
@@ -638,6 +638,7 @@ class Loyalty:
         if bank.can_spend(user, points):
             self.tracker.evaluate(user, DiscordAchievement, good_points, bad_points)
             bank.withdraw_credits(user, points)
+            #TODO save and output?
         else:
             await self.bot.say("You don't have that many points!")
 
@@ -645,8 +646,12 @@ class Loyalty:
     async def getlevel(self, ctx):
         """Get current loyalty level and associated rank"""
         user = ctx.message.author
-        goal = self.tracker.achieved(user, DiscordAchievement)[-1]
-        points = goal['points']
+        goals = self.tracker.achieved(user, DiscordAchievement)
+        if len(goals) > 0:
+            goal = goals[-1]
+        else:
+            goal = {'level': 0, 'name':'idk', 'description':'git gud scrub'}
+        points = goal['name']
         level = goal['level']
         desc = goal['description']
         await self.bot.say("{0} You have {1} points!\n You are: {2} -{3}".format(user.mention, points, level, desc))

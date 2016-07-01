@@ -60,6 +60,7 @@ def has_moneys(ctx):
     economy = ctx.bot.get_cog("Economy")
     store = ctx.bot.get_cog("Store")
     bank = economy.bank
+    message = ctx.message
     author = message.author
     cmd = ctx.command.name
     if store is not None:
@@ -69,10 +70,11 @@ def has_moneys(ctx):
                 if bank.can_spend(author, cost):
                     return True
                 else:
-                    await self.bot.say("{0} You have {1} points, but that costs {2}".format(author.mention, bank.get_balance(author), cost))
+                    balance = bank.get_balance(author)
+                    ctx.bot.say("{0} You have {1} points, but that costs {2}".format(author.mention, balance, cost))
                     return False
             else:
-                await self.bot.say("{0} You need a bank account to call that command\nYou can get one by typing: {1}bank register".format(author.mention, prefix))
+                ctx.bot.say("{0} You need a bank account to call that command\nYou can get one by typing: {1}bank register".format(author.mention, prefix))
                 return False
         else:
             return True
