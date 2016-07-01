@@ -39,15 +39,13 @@ class Store:
 
     @_store.command(pass_context=True)
     @checks.admin_or_permissions(manage_server=True)
-    async def setcost(self, ctx, **kwargs):
+    async def setcost(self, ctx, sum: int, *cmd: str):
         """Set the cost of a command: [prefix]store setcost [command] [cost]"""
-        await self.bot.say("{0}".format(kwargs))
-        cmd = kwargs.get('cmd')
-        sum = kwargs.get('sum')
+        full_cmd = " ".join(cmd)#what is this? lololol...
         if sum > -1:
-            self.costs[cmd] = sum
+            self.costs[full_cmd] = sum
             self._save_store()
-            await self.bot.say("{0} now costs {1}".format(cmd, self.costs[cmd]))
+            await self.bot.say("{0} now costs {1}".format(full_cmd, self.costs[full_cmd]))
         else:
             await self.bot.say("{0} can't be negative".format(sum))
     """

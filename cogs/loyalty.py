@@ -319,8 +319,9 @@ level_increased = Signal()
 highest_level_achieved = Signal()
 
 class AchievementBackend(object):
-    def __init__(self):
-        self.accounts = {}
+    def __init__(self, file_path):
+        self.file_path = file_path
+        self.accounts = DataIO.load_json(file_path)
 
     def achievement_for_id(self, user, achievement):
         """ Retrieves the current ``Achievement`` for the given ``tracked_id``. If the given
@@ -391,7 +392,7 @@ class AchievementBackend(object):
                 to_save[key_server][key_user] = {}
                 for key_achievement, value_achievement in value_user.items():
                     to_save[key_server][key_user][key_achievement] = value_achievement.current
-        dataIO.save_json("data/loyalty/loyalty.json", to_save)
+        dataIO.save_json(self.file_path, to_save)
 
 class AlreadyRegistered(Exception):
         pass
@@ -415,9 +416,9 @@ class AchievementTracker(object):
         The backend the tracker is using can be updated at any time using the :py:func:`set_backend`
         function.
     """
-    def __init__(self):
+    def __init__(self, file_path):
         self._registry = []
-        self.backend = AchievementBackend()
+        self.backend = AchievementBackend(file_path
 
     def register(self, achievement_or_iterable, **options):
         """
@@ -596,12 +597,20 @@ class AchievementTracker(object):
         """ Remove all tracked information for tracked_id """
         self.backend.remove_id(user)
 
+    def add_goal(self, achievement, level, name, description):
+        achievement.add_goal(level, name, description)
+
+    def remove_goal(self, achievement, name, level):
+        achievement.remove_goal(name, level)
+
+
 class DiscordAchievement(Achievement):
     """
     Achievements can have as many goals as they like
     """
     name = 'Chat Loyalty'
     category = 'chat'
+    goals = sorted(DataIO.load_json("data/loyalty/settings.json")['goals'], key=lambda g: g['level'])
     goals = (
         {'level': 1, 'name': 'My First Creation', 'description': 'and it\'s so beautiful....'},
         {'level': 100, 'name': 'Green thumb', 'description': 'You\'ve created at least 5 objects!'},
@@ -609,7 +618,8 @@ class DiscordAchievement(Achievement):
         {'level': 10000, 'name': 'Almost an adult', 'description': 'Just about 18.'},
         {'level': 100000, 'name': 'True Inspiration', 'description': 'Or did you steal your ideas for these 15 items? Hmm?'},
         {'level': 200000, 'name': 'Divine Creator', 'description': 'All the world bows to your divine inspiration.'},
-    )
+    ) if goals is None
+
 
     def evaluate(self, good_points, bad_points, *args, **kwargs):
         self._current += good_points
@@ -618,7 +628,7 @@ class DiscordAchievement(Achievement):
 
 class Loyalty:
     def __init__(self, bot, file_path):
-        self.tracker = AchievementTracker()
+        self.tracker = AchievementTracker("data/loyalty/loyalty.json")
         self.tracker.register(DiscordAchievement)
         self.bot = bot
 
@@ -655,6 +665,27 @@ class Loyalty:
         level = goal['level']
         desc = goal['description']
         await self.bot.say("{0} You have {1} points!\n You are: {2} -{3}".format(user.mention, points, level, desc))
+
+    @_loyalty.command()
+    @checks.admin_or_permissions(manage_server=True)
+    async def addgoal(self, level : int, *name : str, *description: str):
+        """adds a goal to chat goals"""
+        actual_name = " ".join(name)#what is this? lololol...
+        desc = " ".join(description)#what is this? lololol...
+        self.tracker.add_goal(DiscordAchievement, level, actual_name, desc)
+        to_save = {}
+        to_save['goals'] = DiscordAchievement.goals
+        DataIO.save_json("data/loyalty/settings.json", to_save)
+
+    @_loyalty.command()
+    @checks.admin_or_permissions(manage_server=True)
+    async def removegoal(self, level : int, *name : str):
+        """removes a goal from chat goals"""
+        actual_name = " ".join(name)#what is this? lololol...
+        self.tracker.remove_goal(DiscordAchievement, level, actual_name)
+        to_save = {}
+        to_save['goals'] = DiscordAchievement.goals
+        DataIO.save_json("data/loyalty/settings.json", to_save)
 
     @_loyalty.command()
     @checks.admin_or_permissions(manage_server=True)
