@@ -7,6 +7,7 @@ from random import randint
 from copy import deepcopy
 from .utils import checks
 from __main__ import send_cmd_help
+import re
 import os
 import time
 import logging
@@ -52,7 +53,7 @@ class Store:
     @_store.command(pass_context=True, )
     @checks.admin_or_permissions(manage_server=True)
     async def setcost(self, ctx, cmd : str, sum : int):
-        """Set the cost of a command: [prefix]store setcost [command] [cost]"""
+        \"\"\"Set the cost of a command: [prefix]store setcost [command] [cost]\"\"\"
         if sum > -1:
             self.costs[cmd] = sum
             self._save_store()
@@ -65,7 +66,7 @@ class Store:
     @_store.command(pass_context=True)
     @checks.admin_or_permissions(manage_server=True)
     async def setcost(self, ctx, cmd : str, sub_cmd: str, sum : int):
-        """Set the cost of a command: [prefix]store setcost [command] [cost]"""
+        \"""Set the cost of a command: [prefix]store setcost [command] [cost]\"""
         full_cmd = cmd + " " + sub_cmd
         if sum > -1:
             self.costs[full_cmd] = sum
@@ -76,17 +77,18 @@ class Store:
     """
 
     @_store.command()
-    async def getcost(self, cmd : str):
+    async def getcost(self, *cmd : str):
         """Get the cost of a command: [prefix]store getcost [command]"""
-        if cmd in self.costs:
-            await self.bot.say("{0} costs {1}".format(cmd, self.costs[cmd]))
+        full_cmd = " ".join(cmd)
+        if full_cmd in self.costs:
+            await self.bot.say("{0} costs {1}".format(full_cmd, self.costs[full_cmd]))
         else:
-            await self.bot.say("{0} is not a command in the store!".format(cmd))
+            await self.bot.say("{0} is not a command in the store!".format(full_cmd))
 
     """
     @_store.command()
     async def getcost(self, cmd : str, sub_cmd : str):
-        """Get the cost of a command: [prefix]store getcost [command]"""
+        \"""Get the cost of a command: [prefix]store getcost [command]\"""
         full_cmd = cmd + " " + sub_cmd
         if full_cmd in self.costs:
             await self.bot.say("{0} costs {1}".format(full_cmd, self.costs[full_cmd]))
@@ -100,10 +102,11 @@ def has_moneys(ctx):
     bank = economy.bank
     message = ctx.message
     author = message.author
-    cmd = ctx.command.name
-    sub_cmd = ctx.command.invoked_subcommand
-    full_cmd = cmd
-    full_cmd = cmd + " " + sub_cmd if sub_cmd is not None
+    args = ctx.kwargs
+    msg = re.split("[" + ctx.prefix + " ]", ctx.message.content)
+    cmd = msg[1:3]
+    full_cmd = " ".join(cmd)
+    print(full_cmd)
     if store is not None:
         if full_cmd in store.getcosts():
             if bank.account_exists(author):
@@ -127,9 +130,11 @@ async def on_command(command, ctx):
     store = ctx.bot.get_cog("Store")
     author = ctx.message.author
     parent_cmd = command.parent
-    cmd = command.name
-    full_cmd = cmd
-    full_cmd = parent_cmd + " " + cmd if parent_cmd is not None
+    args = ctx.kwargs
+    msg = re.split("[" + ctx.prefix + " ]", ctx.message.content)
+    indx = len(msg)-len(args)
+    cmd = msg[1:indx]
+    full_cmd = " ".join(cmd)
     if store is not None:
         if full_cmd in store.getcosts():
             economy.bank.withdraw_credits(author, store.getcosts()[full_cmd])

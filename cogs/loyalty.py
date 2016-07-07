@@ -7,6 +7,7 @@ from random import randint
 from copy import deepcopy
 from .utils import checks
 from __main__ import send_cmd_help
+import json
 import os
 import time
 import logging
@@ -62,8 +63,14 @@ class Achievement(object):
         self.goals = sorted(self.goals, key=lambda g: g['level'])  # make sure our goals are sorted
 
     def __repr__(self):
-        return '<{0} category:\'{1}\' keywords:{2} {3}>'.format(self.name, self.category,
-                                                                self.keywords, self._current)
+        to_save = {}
+        for key_server, value_server in self.accounts.items():
+            to_save[key_server] = {}
+            for key_user, value_user in value_server.items():
+                to_save[key_server][key_user] = {}
+                for key_achievement, value_achievement in value_user.items():
+                    to_save[key_server][key_user][key_achievement.__name__] = key_achievement._current
+        return json.dumps(to_save)
 
     @property
     def current(self):
@@ -321,7 +328,7 @@ highest_level_achieved = Signal()
 class AchievementBackend(object):
     def __init__(self, file_path):
         self.file_path = file_path
-        self.accounts = DataIO.load_json(file_path)
+        self.accounts = dataIO.load_json(file_path)
 
     def achievement_for_id(self, user, achievement):
         """ Retrieves the current ``Achievement`` for the given ``tracked_id``. If the given
@@ -380,9 +387,8 @@ class AchievementBackend(object):
             for key_user, value_user in value_server.items():
                 self.accounts[key_server][key_user] = {}
                 for key_achievement, value_achievement in value_user.items():
-                    temp = self.accounts[key_server][key_user][key_achievement]
-                    self.accounts[key_server][key_user][key_achievement] = achievement()
-                    self.accounts[key_server][key_user][key_achievement]._current = temp
+                    temp = self.accounts[key_server][key_user][key_achievement]._current
+                    self.accounts[key_server][key_user][key_achievement] = achievement(current=temp)
 
     def _save_loyalty(self):
         to_save = {}
@@ -391,7 +397,7 @@ class AchievementBackend(object):
             for key_user, value_user in value_server.items():
                 to_save[key_server][key_user] = {}
                 for key_achievement, value_achievement in value_user.items():
-                    to_save[key_server][key_user][key_achievement] = value_achievement.current
+                    to_save[key_server][key_user][key_achievement] = key_achievement[0]
         dataIO.save_json(self.file_path, to_save)
 
 class AlreadyRegistered(Exception):
@@ -418,7 +424,7 @@ class AchievementTracker(object):
     """
     def __init__(self, file_path):
         self._registry = []
-        self.backend = AchievementBackend(file_path
+        self.backend = AchievementBackend(file_path)
 
     def register(self, achievement_or_iterable, **options):
         """
@@ -610,15 +616,19 @@ class DiscordAchievement(Achievement):
     """
     name = 'Chat Loyalty'
     category = 'chat'
-    goals = sorted(DataIO.load_json("data/loyalty/settings.json")['goals'], key=lambda g: g['level'])
-    goals = (
-        {'level': 1, 'name': 'My First Creation', 'description': 'and it\'s so beautiful....'},
-        {'level': 100, 'name': 'Green thumb', 'description': 'You\'ve created at least 5 objects!'},
-        {'level': 1000, 'name': 'Clever thinker', 'description': 'More than 10 new creations are all because of you.'},
-        {'level': 10000, 'name': 'Almost an adult', 'description': 'Just about 18.'},
-        {'level': 100000, 'name': 'True Inspiration', 'description': 'Or did you steal your ideas for these 15 items? Hmm?'},
-        {'level': 200000, 'name': 'Divine Creator', 'description': 'All the world bows to your divine inspiration.'},
-    ) if goals is None
+    saved_goals = dataIO.load_json("data/loyalty/settings.json")
+    goals = tuple()
+    if saved_goals:
+        goals = sorted(saved_goals['goals'], key=lambda g: g['level'])
+    if not goals:
+        goals = (
+            {'level': 1, 'name': 'My First Creation', 'description': 'and it\'s so beautiful....'},
+            {'level': 100, 'name': 'Green thumb', 'description': 'You\'ve created at least 5 objects!'},
+            {'level': 1000, 'name': 'Clever thinker', 'description': 'More than 10 new creations are all because of you.'},
+            {'level': 10000, 'name': 'Almost an adult', 'description': 'Just about 18.'},
+            {'level': 100000, 'name': 'True Inspiration', 'description': 'Or did you steal your ideas for these 15 items? Hmm?'},
+            {'level': 200000, 'name': 'Divine Creator', 'description': 'All the world bows to your divine inspiration.'},
+        )
 
 
     def evaluate(self, good_points, bad_points, *args, **kwargs):
@@ -668,14 +678,14 @@ class Loyalty:
 
     @_loyalty.command()
     @checks.admin_or_permissions(manage_server=True)
-    async def addgoal(self, level : int, *name : str, *description: str):
+    async def addgoal(self, level : int, name : str, *description : str):
         """adds a goal to chat goals"""
-        actual_name = " ".join(name)#what is this? lololol...
+        actual_name = name#what is this? lololol...
         desc = " ".join(description)#what is this? lololol...
         self.tracker.add_goal(DiscordAchievement, level, actual_name, desc)
         to_save = {}
         to_save['goals'] = DiscordAchievement.goals
-        DataIO.save_json("data/loyalty/settings.json", to_save)
+        dataIO.save_json("data/loyalty/settings.json", to_save)
 
     @_loyalty.command()
     @checks.admin_or_permissions(manage_server=True)
@@ -685,7 +695,7 @@ class Loyalty:
         self.tracker.remove_goal(DiscordAchievement, level, actual_name)
         to_save = {}
         to_save['goals'] = DiscordAchievement.goals
-        DataIO.save_json("data/loyalty/settings.json", to_save)
+        dataIO.save_json("data/loyalty/settings.json", to_save)
 
     @_loyalty.command()
     @checks.admin_or_permissions(manage_server=True)
