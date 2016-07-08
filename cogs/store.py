@@ -49,32 +49,6 @@ class Store:
             await self.bot.say("{0} now costs {1}".format(full_cmd, self.costs[full_cmd]))
         else:
             await self.bot.say("{0} can't be negative".format(sum))
-    """
-    @_store.command(pass_context=True, )
-    @checks.admin_or_permissions(manage_server=True)
-    async def setcost(self, ctx, cmd : str, sum : int):
-        \"\"\"Set the cost of a command: [prefix]store setcost [command] [cost]\"\"\"
-        if sum > -1:
-            self.costs[cmd] = sum
-            self._save_store()
-            await self.bot.say("{0} now costs {1}".format(cmd, self.costs[cmd]))
-        else:
-            await self.bot.say("{0} can't be negative".format(sum))
-    """
-
-    """
-    @_store.command(pass_context=True)
-    @checks.admin_or_permissions(manage_server=True)
-    async def setcost(self, ctx, cmd : str, sub_cmd: str, sum : int):
-        \"""Set the cost of a command: [prefix]store setcost [command] [cost]\"""
-        full_cmd = cmd + " " + sub_cmd
-        if sum > -1:
-            self.costs[full_cmd] = sum
-            self._save_store()
-            await self.bot.say("{0}now costs {1}".format(full_cmd, self.costs[full_cmd]))
-        else:
-            await self.bot.say("{0} can't be negative".format(sum))
-    """
 
     @_store.command()
     async def getcost(self, *cmd : str):
@@ -84,17 +58,6 @@ class Store:
             await self.bot.say("{0} costs {1}".format(full_cmd, self.costs[full_cmd]))
         else:
             await self.bot.say("{0} is not a command in the store!".format(full_cmd))
-
-    """
-    @_store.command()
-    async def getcost(self, cmd : str, sub_cmd : str):
-        \"""Get the cost of a command: [prefix]store getcost [command]\"""
-        full_cmd = cmd + " " + sub_cmd
-        if full_cmd in self.costs:
-            await self.bot.say("{0} costs {1}".format(full_cmd, self.costs[full_cmd]))
-        else:
-            await self.bot.say("{0} is not a command in the store!".format(full_cmd))
-    """
 
 def has_moneys(ctx):
     economy = ctx.bot.get_cog("Economy")
@@ -132,9 +95,11 @@ async def on_command(command, ctx):
     parent_cmd = command.parent
     args = ctx.kwargs
     msg = re.split("[" + ctx.prefix + " ]", ctx.message.content)
-    indx = len(msg)-len(args)
-    cmd = msg[1:indx]
+    #indx = len(msg) - len(args)
+    #cmd = msg[1:indx]
+    cmd = msg[1:3]
     full_cmd = " ".join(cmd)
+    print(full_cmd)
     if store is not None:
         if full_cmd in store.getcosts():
             economy.bank.withdraw_credits(author, store.getcosts()[full_cmd])

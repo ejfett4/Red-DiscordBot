@@ -12,18 +12,19 @@ import os
 import time
 import logging
 
-default_stocks = {'NNTDO': {'price':40, 'bought':0, 'sold':0},
-                  'NASLAQ':{'price':40, 'bought':0, 'sold':0},
-                  'SNRLX': {'price':40, 'bought':0, 'sold':0},
-                  'WTCHR': {'price':40, 'bought':0, 'sold':0},
-                  'DSCRD': {'price':40, 'bought':0, 'sold':0},
-                  'PYTHN': {'price':40, 'bought':0, 'sold':0},
-                  'CRBDBX':{'price':40, 'bought':0, 'sold':0},
-                  'SNY':   {'price':40, 'bought':0, 'sold':0},
-                  'CSHMNY':{'price':40, 'bought':0, 'sold':0},
-                  'MCRSFT':{'price':40, 'bought':0, 'sold':0},
-                  'SNK':   {'price':40, 'bought':0, 'sold':0},
-                  'DRG':   {'price':40, 'bought':0, 'sold':0}}
+default_stocks = {'NNTDO': {'price':100, 'bought':0, 'sold':0},
+                  'NASLAQ':{'price':100, 'bought':0, 'sold':0},
+                  'SNRLX': {'price':100, 'bought':0, 'sold':0},
+                  'WTCHR': {'price':100, 'bought':0, 'sold':0},
+                  'DSCRD': {'price':100, 'bought':0, 'sold':0},
+                  'PYTHN': {'price':100, 'bought':0, 'sold':0},
+                  'CRBDBX':{'price':100, 'bought':0, 'sold':0},
+                  'SNY':   {'price':100, 'bought':0, 'sold':0},
+                  'CSHMNY':{'price':100, 'bought':0, 'sold':0},
+                  'MCRSFT':{'price':100, 'bought':0, 'sold':0},
+                  'SNK':   {'price':100, 'bought':0, 'sold':0},
+                  'DRG':   {'price':100, 'bought':0, 'sold':0},
+                  'GRMN':  {'price':100, 'bought':0, 'sold':0}}
 
 class Stocks:
     def __init__(self, bot):
@@ -87,6 +88,8 @@ class Stocks:
                         bank.deposit_credits(user, price)
                         self.portfolios[user.id][stock_name] -= amount
                         self.stocks[stock_name]['sold'] += amount
+                        if self.portfolios[user.id][stock_name] == 0:
+                            del self.portfolios[user.id][stock_name]
                         dataIO.save_json('data/stocks/portfolios.json', self.portfolios)
                         dataIO.save_json('data/stocks/stocks.json', self.stocks)
                         await self.bot.say("You sold {1} stocks of {0}".format(stock_name, amount))
@@ -137,22 +140,32 @@ class Stocks:
 
 
     def new_price(self, stock):
-        bought = stock['bought']
-        total = stock['bought'] + stock['sold']
+        bought = float(stock['bought'])
+        sold = float(stock['sold'])
+        total = float(stock['bought'] + stock['sold'])
+        rnum =  random()
         if total == 0:
             total = 1
-        purchase_factor = (bought / total) / 2.0 + 1.0
-        random_factor = (random() / 2.0 + 0.75)
-        result_price = int(stock['price'] * random_factor * purchase_factor)
-        if result_price == 0:
+        buy_factor = (bought / total) / 2.0 + 1.0
+        sell_factor = 1.0 / ((sold / total) / 2.0 + 1.0)
+        random_factor = (rnum / 2.0 + 0.75)
+        if rnum < 0.05:
+            random_factor = 0.5
+        if rnum > 0.95:
+            random_factor = 2.0
+        result_price = int(float(stock['price']) * random_factor * buy_factor * sell_factor)
+        if result_price <= 10:
             result_price = 10
-        #result_price = ((random() * (result_price / 80)) > 0.95) ? 40 : result_price
         return result_price
 
     async def check_update_prices(self):
         while "Stocks" in self.bot.cogs:
-            await asyncio.sleep(60)
-            await self.update_stock_prices()
+            if self.bot.user is None:
+                await asyncio.sleep(60)
+            else:
+                await asyncio.sleep(60)
+                await self.update_stock_prices()
+                await self.bot.say(self.make_list())#maybe this will work...
 
 def check_folders():
     if not os.path.exists("data/stocks"):

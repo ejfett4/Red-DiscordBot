@@ -620,7 +620,7 @@ class DiscordAchievement(Achievement):
     goals = tuple()
     if saved_goals:
         goals = sorted(saved_goals['goals'], key=lambda g: g['level'])
-    if not goals:
+    else:
         goals = (
             {'level': 1, 'name': 'My First Creation', 'description': 'and it\'s so beautiful....'},
             {'level': 100, 'name': 'Green thumb', 'description': 'You\'ve created at least 5 objects!'},
@@ -629,7 +629,6 @@ class DiscordAchievement(Achievement):
             {'level': 100000, 'name': 'True Inspiration', 'description': 'Or did you steal your ideas for these 15 items? Hmm?'},
             {'level': 200000, 'name': 'Divine Creator', 'description': 'All the world bows to your divine inspiration.'},
         )
-
 
     def evaluate(self, good_points, bad_points, *args, **kwargs):
         self._current += good_points
