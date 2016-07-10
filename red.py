@@ -316,7 +316,10 @@ def load_cogs():
         if extension.lower() == "cogs.owner":
             continue
         in_reg = extension in registry
-        if not (in_reg or no_prompt):
+        if in_reg is False:
+            if no_prompt is True:
+                registry[extension] = False
+                continue
             print("\nNew extension: {}".format(extension))
             print("Load it?(y/n)")
             if not get_answer():
@@ -372,7 +375,6 @@ def main():
     print("and: pip3 install -U git+https://github.com/Rapptz/"
           "discord.py@master#egg=discord.py[voice]")
     if settings.login_type == "token":
-        owner_cog._token.hidden = True
         try:
             yield from bot.login(settings.email)
         except TypeError as e:
