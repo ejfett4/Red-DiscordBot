@@ -138,7 +138,6 @@ class Stocks:
             self.stocks[key]['sold'] = 0
         dataIO.save_json('data/stocks/stocks.json', self.stocks)
 
-
     def new_price(self, stock):
         bought = float(stock['bought'])
         sold = float(stock['sold'])
@@ -159,6 +158,7 @@ class Stocks:
         return result_price
 
     async def check_update_prices(self):
+        await asyncio.sleep(60)
         while "Stocks" in self.bot.cogs:
             if self.bot.user is None:
                 await asyncio.sleep(60)

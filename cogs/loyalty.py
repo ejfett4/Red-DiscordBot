@@ -657,7 +657,16 @@ class Loyalty:
         if bank.can_spend(user, points):
             self.tracker.evaluate(user, DiscordAchievement, good_points, bad_points)
             bank.withdraw_credits(user, points)
-            #TODO save and output?
+            self.backend._save_loyalty();
+            goals = self.tracker.achieved(user, DiscordAchievement)
+            if len(goals) > 0:
+                goal = goals[-1]
+            else:
+                goal = {'level': 0, 'name':'idk', 'description':'git gud scrub'}
+            points = goal['name']
+            level = goal['level']
+            desc = goal['description']
+            await self.bot.say("{0} You have {1} points!\n You are: {2} -{3}".format(user.mention, points, level, desc))
         else:
             await self.bot.say("You don't have that many points!")
 
@@ -679,8 +688,8 @@ class Loyalty:
     @checks.admin_or_permissions(manage_server=True)
     async def addgoal(self, level : int, name : str, *description : str):
         """adds a goal to chat goals"""
-        actual_name = name#what is this? lololol...
-        desc = " ".join(description)#what is this? lololol...
+        actual_name = name
+        desc = " ".join(description)
         self.tracker.add_goal(DiscordAchievement, level, actual_name, desc)
         to_save = {}
         to_save['goals'] = DiscordAchievement.goals
@@ -690,21 +699,11 @@ class Loyalty:
     @checks.admin_or_permissions(manage_server=True)
     async def removegoal(self, level : int, *name : str):
         """removes a goal from chat goals"""
-        actual_name = " ".join(name)#what is this? lololol...
+        actual_name = " ".join(name)
         self.tracker.remove_goal(DiscordAchievement, level, actual_name)
         to_save = {}
         to_save['goals'] = DiscordAchievement.goals
         dataIO.save_json("data/loyalty/settings.json", to_save)
-
-    @_loyalty.command()
-    @checks.admin_or_permissions(manage_server=True)
-    async def punish(self, user : discord.Member):
-        """Admin command, punish user by reducing loyalty rank"""
-        goal = self.tracker.achieved(user, DiscordAchievement)[-2]#TODO make this check if they are at first level
-        level = goal['level']
-        desc = goal['description']
-        self.tracker.setLevel(user, DiscordAchievement, goal['level'])
-        await self.bot.say("{0} You have been punished!\n You are now: {2} -{3}".format(user.mention, level, desc))
 
 def check_folders():
     if not os.path.exists("data/loyalty"):
